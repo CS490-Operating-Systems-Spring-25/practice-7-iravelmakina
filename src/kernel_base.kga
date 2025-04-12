@@ -65,6 +65,9 @@ cpu_exec
     var catStr
     write "cat" to var:catStr
 
+    var compareStr
+    write "compare" to var:compareStr
+
 label kernel_start
     // Display prompt to enter the value:
     copy var:sys_work_dir to DISPLAY_BUFFER
@@ -97,6 +100,12 @@ label kernel_start
     cpu_exec
     copy REG_RES to var:parsedArg1
 
+    // Get second argument of the command
+    var parsedArg2
+    write 3 to REG_B
+    cpu_exec
+    copy REG_RES to var:parsedArg2
+
     // Display a message with the first component of input:
     write "Parsed command:" to DISPLAY_BUFFER
     write "" to DISPLAY_COLOR
@@ -121,6 +130,13 @@ label kernel_start
     write OP_CMP_EQ to REG_OP
     cpu_exec
     jump_if label:cat_command
+
+    // Check compare command e.g. compare path/to/file1 path/to/file2 :
+    copy var:parsedStr to REG_A
+    copy var:compareStr to REG_B
+    write OP_CMP_EQ to REG_OP
+    cpu_exec
+    jump_if label:compare_command
 
     jump label:kernel_start
 
@@ -179,6 +195,176 @@ label cat_command
         jump label:sys_fs_close
         jump label:kernel_start
 
+label compare_command
+    // Check if we have two arguments (not empty)
+    copy var:parsedArg1 to REG_A
+    write "" to REG_B
+    write OP_CMP_EQ to REG_OP
+    cpu_exec
+    jump_if label:invalid_arg
+    copy var:parsedArg2 to REG_A
+    cpu_exec
+    jump_if label:invalid_arg
+
+    // let's open file1:
+    var compare_command_file_desc1
+    copy var:parsedArg1 to REG_A
+    copy PROGRAM_COUNTER to var:sys_return
+    jump label:sys_fs_open
+    jump_err label:display_error
+    copy REG_RES to var:compare_command_file_desc1
+
+    // let's open file2:
+    var compare_command_file_desc2
+    copy var:parsedArg2 to REG_A
+    copy PROGRAM_COUNTER to var:sys_return
+    jump label:sys_fs_open
+    jump_err label:display_error
+    copy REG_RES to var:compare_command_file_desc2
+
+    // let's get file descriptor info
+    copy var:compare_command_file_desc1 to REG_A
+    copy PROGRAM_COUNTER to var:sys_return
+    jump label:sys_fs_descriptor_info
+    jump_err label:compare_command_close
+    
+    var compare_command_file_size1
+    copy REG_RES to REG_A
+    write 4 to REG_B
+    write " " to REG_C
+    write OP_GET_COLUMN to REG_OP
+    cpu_exec
+    copy REG_RES to var:compare_command_file_size1
+
+    copy var:compare_command_file_desc2 to REG_A
+    copy PROGRAM_COUNTER to var:sys_return
+    jump label:sys_fs_descriptor_info
+    jump_err label:compare_command_close
+
+    var compare_command_file_size2
+    copy REG_RES to REG_A
+    write 4 to REG_B
+    write " " to REG_C
+    write OP_GET_COLUMN to REG_OP
+    cpu_exec
+    copy REG_RES to var:compare_command_file_size2
+
+    copy var:compare_command_file_size1 to REG_A
+    copy var:compare_command_file_size2 to REG_B
+    write OP_CMP_LT to REG_OP
+    cpu_exec
+    jump_if label:compare_command_first_file_is_smaller
+
+    var compare_command_lines_to_check
+    copy var:compare_command_file_size2 to var:compare_command_lines_to_check
+    jump label:compare_command_continue
+
+    label compare_command_first_file_is_smaller
+    copy var:compare_command_file_size1 to var:compare_command_lines_to_check
+
+    label compare_command_continue
+
+    var compare_command_line1
+    var compare_command_line2
+    var compare_command_line_idx
+    write 1 to var:compare_command_line_idx
+
+label compare_command_loop
+    // if compare_line > compare_lines_to_check → break
+    copy var:compare_command_line_idx to REG_A
+    copy var:compare_command_lines_to_check to REG_B
+    write OP_CMP_LE to REG_OP
+    cpu_exec
+    jump_if_not label:compare_command_done
+
+    // Read line from file1
+    copy var:compare_command_file_desc1 to REG_A
+    copy var:compare_command_line_idx to REG_B
+    copy PROGRAM_COUNTER to var:sys_return
+    jump label:sys_fs_read
+    jump_err label:compare_command_close
+    copy REG_RES to var:compare_command_line1
+
+    // Read line from file2
+    copy var:compare_command_file_desc2 to REG_A
+    copy var:compare_command_line_idx to REG_B
+    copy PROGRAM_COUNTER to var:sys_return
+    jump label:sys_fs_read
+    jump_err label:compare_command_close
+    copy REG_RES to var:compare_command_line2
+
+label compare_command_check
+    // Compare lines
+    copy var:compare_command_line1 to REG_A
+    copy var:compare_command_line2 to REG_B
+    write OP_CMP_EQ to REG_OP
+    cpu_exec
+    jump_if label:compare_command_next_line
+
+    // Print diff line number
+    write "Files differ at line: " to DISPLAY_BUFFER
+    write COLOR_RED to DISPLAY_COLOR
+    write OP_DISPLAY to REG_OP
+    cpu_exec
+
+    copy var:compare_command_line_idx to DISPLAY_BUFFER
+    write COLOR_YELLOW to DISPLAY_COLOR
+    write OP_DISPLAY_LN to REG_OP
+    cpu_exec
+
+    jump label:kernel_start
+
+label compare_command_next_line
+    copy var:compare_command_line_idx to REG_A
+    write OP_INCR to REG_OP
+    cpu_exec
+    copy REG_RES to var:compare_command_line_idx
+    jump label:compare_command_loop
+
+label compare_command_done
+    // Now check if file sizes equal
+    copy var:compare_command_file_size1 to REG_A
+    copy var:compare_command_file_size2 to REG_B
+    write OP_CMP_EQ to REG_OP
+    cpu_exec
+    jump_if label:compare_command_files_identical
+
+    // Same lines, different sizes
+    write "Files have identical content but different size." to DISPLAY_BUFFER
+    write COLOR_YELLOW to DISPLAY_COLOR
+    write OP_DISPLAY_LN to REG_OP
+    cpu_exec
+    jump label:compare_command_close
+
+    label compare_command_files_identical
+        write "Files are identical." to DISPLAY_BUFFER
+        write COLOR_GREEN to DISPLAY_COLOR
+        write OP_DISPLAY_LN to REG_OP
+        cpu_exec
+        jump label:compare_command_close
+
+
+label compare_command_close
+        // Let's close files
+        copy var:compare_command_file_desc1 to REG_A
+        copy PROGRAM_COUNTER to var:sys_return
+        jump label:sys_fs_close
+
+        copy var:compare_command_file_desc2 to REG_A
+        copy PROGRAM_COUNTER to var:sys_return
+        jump label:sys_fs_close
+        jump label:kernel_start
+
+label invalid_arg
+    write "Invalid arument. Usage: compare file1 file2" to REG_ERROR
+
+label display_error
+    copy REG_ERROR to DISPLAY_BUFFER
+    write COLOR_RED to DISPLAY_COLOR
+    write OP_DISPLAY_LN to REG_OP
+    cpu_exec
+
+    jump label:kernel_start
 
 label kernel_end
     copy REG_ERROR to DISPLAY_BUFFER

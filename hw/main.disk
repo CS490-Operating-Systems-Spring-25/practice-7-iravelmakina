@@ -12,10 +12,10 @@ FS_HEADER kagu_fs FIRST_USABLE_BLOCK 30 LAST_USABLE_BLOCK 200
 2.txt 7 7 7 user user BLOCKS 33 39 43 45
 otherDir/3.txt 6 4 4 user user BLOCKS 46 50
 dir/1.txt 7 4 0 user user BLOCKS 51 60
-
-
-
-
+similar1.txt 7 7 7 user user BLOCKS 61 63
+similar2.txt 7 7 7 user user BLOCKS 64 67
+identical1.txt 7 7 7 user user BLOCKS 68 68
+identical2.txt 7 7 7 user user BLOCKS 69 69
 
 
 
@@ -58,15 +58,15 @@ Kotlin & Java
 Apple and banana
 Green color
 Union
+1
+2
+3
+1
+2
+3
 
-
-
-
-
-
-
-
-
+This line is not unique among files
+This line is not unique among files
 
 
 
