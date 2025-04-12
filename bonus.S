@@ -34,7 +34,7 @@ _start:
     // Print the prompt message
     mov x0, #1               // stdout
     ldr x1, =prompt_message  // Load address of prompt message
-    mov x2, #49              // Length of prompt message
+    mov x2, #163              // Length of prompt message
     mov x8, #64              // Syscall write
     svc #0
 
